@@ -9,9 +9,9 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using User.Management.API.Models;
-using User.Management.API.Models.Authentication.Login;
-using User.Management.API.Models.Authentication.SignUp;
 using User.Management.Service.Models;
+using User.Management.Service.Models.Authentication.Login;
+using User.Management.Service.Models.Authentication.SignUp;
 using User.Management.Service.Services;
 using IEmailService = User.Management.Service.Services.IEmailService;
 
@@ -26,63 +26,43 @@ namespace User.Management.API.Controllers
         private readonly IConfiguration _config;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IEmailService _emailService;
+        private readonly IUserManagement _userManagement;
         public AuthenticationController(UserManager<IdentityUser> userManager, 
             SignInManager<IdentityUser> signInManager, 
             IConfiguration config,
             RoleManager<IdentityRole> roleManager,
-            IEmailService emailService)
+            IEmailService emailService,
+            IUserManagement userManagement)
         {
             _signInManager = signInManager;
             _userManager = userManager;
             _config = config;
             _roleManager = roleManager;
             _emailService = emailService;
+            _userManagement = userManagement;
         }
 
         [HttpPost("Register")]
-        public async Task<IActionResult> Register([FromBody] RegisterUser registerUser, string role)
+        public async Task<IActionResult> Register([FromBody] RegisterUser registerUser)
         {
-            var userExist = await _userManager.FindByEmailAsync(registerUser.Email);
-            if (userExist != null)
+            var tokenResponse = await _userManagement.CreateUserWithTokenAsync(registerUser);
+
+            if (tokenResponse.IsSuccess)
             {
-                return StatusCode(StatusCodes.Status403Forbidden,
-                    new Response { Status = "Error", Message = "User already exists!" });
-            }
+                await _userManagement.AssignRoleToUserAsync(registerUser.Roles, tokenResponse.Response.User);
 
-            IdentityUser user = new()
-            {
-                Email = registerUser.Email,
-                SecurityStamp = Guid.NewGuid().ToString(),
-                UserName = registerUser.Username,
-                TwoFactorEnabled = true
-            };
-
-            if (await _roleManager.RoleExistsAsync(role))
-            {
-                var result = await _userManager.CreateAsync(user, registerUser.Password);
-                if (!result.Succeeded)
-                {
-                    return StatusCode(StatusCodes.Status500InternalServerError,
-                        new Response { Status = "Error", Message = "User failed to create" });
-                }
-
-                // assign a role to the user
-                await _userManager.AddToRoleAsync(user, role);
-
-                // email confirmation
-                var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { token, email = user.Email }, Request.Scheme);
-                var message = new Message(new string[] { user.Email! }, "Confirmation email link", confirmationLink);
+                var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { tokenResponse.Response.Token, email = registerUser.Email }, Request.Scheme);
+                var message = new Message(new string[] { registerUser.Email! }, "Confirmation email link", confirmationLink!);
                 _emailService.SendEmail(message);
 
                 return StatusCode(StatusCodes.Status200OK,
-                        new Response { Status = "Success", Message = $"User created & Email confirmation sent to {user.Email} successfully" });
+                    new Response { Status = "Success", Message = "Email verified successfully!" });
             }
-            else
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                        new Response { Status = "Error", Message = "This role does not exist." });
-            }
+
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                    new Response { Message = tokenResponse.Message, IsSuccess = false });
+
+
         }
 
         [HttpGet("ConfirmEmail")]
