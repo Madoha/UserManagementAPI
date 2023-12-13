@@ -8,9 +8,10 @@ using User.Management.Data.Models;
 
 namespace User.Management.Service.Models.Authentication.User
 {
-    public class CreateUserResponse
+    public class LoginOtpResponse
     {
-        public string Token { get; set; }
-        public ApplicationUser User { get; set; }
+        public string Token { get; set; } = null!;
+        public bool IsTwoFactorEnable { get; set; }
+        public ApplicationUser User { get; set; } = null!;
     }
 }

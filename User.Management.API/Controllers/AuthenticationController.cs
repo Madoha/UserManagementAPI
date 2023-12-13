@@ -9,6 +9,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using User.Management.API.Models;
+using User.Management.Data.Models;
 using User.Management.Service.Models;
 using User.Management.Service.Models.Authentication.Login;
 using User.Management.Service.Models.Authentication.SignUp;
@@ -21,14 +22,14 @@ namespace User.Management.API.Controllers
     [ApiController]
     public class AuthenticationController : ControllerBase
     {
-        private readonly UserManager<IdentityUser> _userManager;
-        private readonly SignInManager<IdentityUser> _signInManager;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly IConfiguration _config;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IEmailService _emailService;
         private readonly IUserManagement _userManagement;
-        public AuthenticationController(UserManager<IdentityUser> userManager, 
-            SignInManager<IdentityUser> signInManager, 
+        public AuthenticationController(UserManager<ApplicationUser> userManager, 
+            SignInManager<ApplicationUser> signInManager, 
             IConfiguration config,
             RoleManager<IdentityRole> roleManager,
             IEmailService emailService,
@@ -56,7 +57,7 @@ namespace User.Management.API.Controllers
                 _emailService.SendEmail(message);
 
                 return StatusCode(StatusCodes.Status200OK,
-                    new Response { Status = "Success", Message = "Email verified successfully!" });
+                    new Response { Status = "Success", Message = "Registered & Waiting email verification" });
             }
 
             return StatusCode(StatusCodes.Status500InternalServerError,
@@ -86,43 +87,28 @@ namespace User.Management.API.Controllers
         [Route("Login")]
         public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
         {
-            var user = await _userManager.FindByNameAsync(loginModel.Username);
-            
-            if (user.TwoFactorEnabled)
+            var loginOtpResponse = await _userManagement.GetOtpByLoginAsync(loginModel);
+
+            if (loginOtpResponse.Response != null)
             {
-                await _signInManager.SignOutAsync();
-                await _signInManager.PasswordSignInAsync(user, loginModel.Password, false, true);
-                var token = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
-                var message = new Message(new string[] { user.Email! }, "OTP Confirmation", token);
-                _emailService.SendEmail(message);
+                var user = loginOtpResponse.Response.User;
 
-                return StatusCode(StatusCodes.Status200OK,
-                    new Response { Status = "Success", Message = $"We have esnd an OTP to your email {user.Email}" });
-            }
-
-            if (user != null && await _userManager.CheckPasswordAsync(user, loginModel.Password))
-            {
-                var authClaims = new List<Claim>
+                if (user.TwoFactorEnabled)
                 {
-                    new Claim(ClaimTypes.Name, user.UserName),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-                };
+                    var token = loginOtpResponse.Response.Token;
+                    var message = new Message(new string[] { user.Email! }, "OTP Confirmation", token);
+                    _emailService.SendEmail(message);
 
-                var userRoles = await _userManager.GetRolesAsync(user);
-                foreach (var role in userRoles)
-                {
-                    authClaims.Add(new Claim(ClaimTypes.Role, role));
+                    return StatusCode(StatusCodes.Status200OK,
+                        new Response { IsSuccess = loginOtpResponse.IsSuccess, Status = "Success", Message = $"We have send an OTP to your email {user.Email}" });
                 }
-                //authClaims.AddRange(roleClaims
 
-                var jwtToken = GetToken(authClaims);
-
-                return Ok(new
+                if (user != null && await _userManager.CheckPasswordAsync(user, loginModel.Password))
                 {
-                    token = new JwtSecurityTokenHandler().WriteToken(jwtToken),
-                    expiration = jwtToken.ValidTo
-                });
-
+                    var response = await _userManagement.GetJwtTokenAsync(user);
+                    return Ok(response);
+                }
+                return Unauthorized();
             }
             return Unauthorized();
         }
@@ -137,27 +123,8 @@ namespace User.Management.API.Controllers
             {
                 if (user != null)
                 {
-                    var authClaims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.Name, user.UserName),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-                };
-
-                    var userRoles = await _userManager.GetRolesAsync(user);
-                    foreach (var role in userRoles)
-                    {
-                        authClaims.Add(new Claim(ClaimTypes.Role, role));
-                    }
-                    //authClaims.AddRange(roleClaims);
-
-                    var jwtToken = GetToken(authClaims);
-
-                    return Ok(new
-                    {
-                        token = new JwtSecurityTokenHandler().WriteToken(jwtToken),
-                        expiration = jwtToken.ValidTo
-                    });
-
+                    var response = await _userManagement.GetJwtTokenAsync(user);
+                    return Ok(response);
                 }
                 return StatusCode(StatusCodes.Status404NotFound,
                     new Response { Status = "Failed", Message = "Invalid code" });
@@ -219,21 +186,6 @@ namespace User.Management.API.Controllers
             }
             return StatusCode(StatusCodes.Status400BadRequest,
                     new Response { Status = "Error", Message = "Something went wrong while changing the password." });
-        }
-
-        private JwtSecurityToken GetToken(List<Claim> authClaims)
-        {
-            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["JWT:Secret"]!));
-
-            var token = new JwtSecurityToken(
-                issuer: _config["JWT:ValidIssuer"],
-                audience: _config["JWT:ValidAudience"],
-                expires: DateTime.UtcNow.AddHours(1),
-                claims: authClaims,
-                signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
-                );
-
-            return token;
         }
     }
 }

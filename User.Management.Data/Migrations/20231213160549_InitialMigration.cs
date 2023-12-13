@@ -3,10 +3,12 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace User.Management.API.Migrations
+#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+
+namespace User.Management.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitialMigration : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -154,6 +156,16 @@ namespace User.Management.API.Migrations
                         principalTable: "AspNetUsers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.InsertData(
+                table: "AspNetRoles",
+                columns: new[] { "Id", "ConcurrencyStamp", "Name", "NormalizedName" },
+                values: new object[,]
+                {
+                    { "381421c9-e2ea-4f8c-b67f-6cbe47c81331", "3", "HR", "HR" },
+                    { "5cf41b84-9394-4242-b367-17928daafa32", "1", "Admin", "ADMIN" },
+                    { "d9b37d30-b2c8-4456-8d74-8a463e019afe", "2", "User", "USER" }
                 });
 
             migrationBuilder.CreateIndex(
