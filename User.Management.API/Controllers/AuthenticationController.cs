@@ -13,6 +13,7 @@ using User.Management.Data.Models;
 using User.Management.Service.Models;
 using User.Management.Service.Models.Authentication.Login;
 using User.Management.Service.Models.Authentication.SignUp;
+using User.Management.Service.Models.Authentication.User;
 using User.Management.Service.Services;
 using IEmailService = User.Management.Service.Services.IEmailService;
 
@@ -117,17 +118,10 @@ namespace User.Management.API.Controllers
         [Route("login-2FA")]
         public async Task<IActionResult> LoginWithOTP(string code, string username)
         {
-            var signIn = await _signInManager.TwoFactorSignInAsync("Email", code, false, false);
-            var user = await _userManager.FindByNameAsync(username);
-            if (signIn.Succeeded)
+            var jwt = await _userManagement.LoginUserWithJwtTokenAsync(code, username);
+            if (jwt.IsSuccess)
             {
-                if (user != null)
-                {
-                    var response = await _userManagement.GetJwtTokenAsync(user);
-                    return Ok(response);
-                }
-                return StatusCode(StatusCodes.Status404NotFound,
-                    new Response { Status = "Failed", Message = "Invalid code" });
+                return Ok(jwt);
             }
             return StatusCode(StatusCodes.Status404NotFound,
                     new Response { Status = "Failed", Message = "Invalid code" });
@@ -186,6 +180,19 @@ namespace User.Management.API.Controllers
             }
             return StatusCode(StatusCodes.Status400BadRequest,
                     new Response { Status = "Error", Message = "Something went wrong while changing the password." });
+        }
+
+        [HttpPost]
+        [Route("refresh-token")]
+        public async Task<IActionResult> RefreshToken(LoginResponse tokens)
+        {
+            var jwt = await _userManagement.RenewAccessTokenAsync(tokens);
+            if (jwt.IsSuccess)
+            {
+                return Ok(jwt);
+            }
+            return StatusCode(StatusCodes.Status404NotFound,
+                    new Response { Status = "Failed", Message = "Invalid code" });
         }
     }
 }

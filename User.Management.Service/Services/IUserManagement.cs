@@ -12,6 +12,8 @@ namespace User.Management.Service.Services
         Task<ApiResponse<CreateUserResponse>> CreateUserWithTokenAsync(RegisterUser regiterUser);
         Task<ApiResponse<List<string>>> AssignRoleToUserAsync(IEnumerable<string> roles, ApplicationUser user);
         Task<ApiResponse<LoginOtpResponse>> GetOtpByLoginAsync(LoginModel loginModel);
-        Task<ApiResponse<JwtToken>> GetJwtTokenAsync(ApplicationUser user);
+        Task<ApiResponse<LoginResponse>> GetJwtTokenAsync(ApplicationUser user);
+        Task<ApiResponse<LoginResponse>> LoginUserWithJwtTokenAsync(string otp, string username);
+        Task<ApiResponse<LoginResponse>> RenewAccessTokenAsync(LoginResponse tokens);
     }
 }
